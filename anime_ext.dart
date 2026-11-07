@@ -66,20 +66,20 @@ class JKAnime extends MProvider {
       list.add(anime);
     }
     if (list.isEmpty) {
-      List<String> classes = [];
-      for (var m in RegExp(r'class="([^"]+)"').allMatches(html)) {
-        final c = m.group(1)!;
-        if (!classes.contains(c)) classes.add(c);
-        if (classes.length >= 60) break;
-      }
-      final i = html.indexOf("<img");
+      final k = html.indexOf("page_directorio");
       String ctx = "";
-      if (i >= 0) {
-        final a = i > 300 ? i - 300 : 0;
-        final b = i + 500 < html.length ? i + 500 : html.length;
-        ctx = html.substring(a, b);
+      if (k >= 0) {
+        final e = k + 1500 < html.length ? k + 1500 : html.length;
+        ctx = html.substring(k, e).replaceAll(RegExp(r'\s+'), " ");
       }
-      throw "Sin resultados. CLASES: ${classes.join(' | ')} || CONTEXTO IMG: $ctx";
+      List<String> ajax = [];
+      final ajaxReg = RegExp(r'''["\x27]((?:/ajax/|https?://[^"\x27\s]*ajax)[^"\x27\s]*)["\x27]''');
+      for (var m in ajaxReg.allMatches(html)) {
+        final u = m.group(1)!;
+        if (!ajax.contains(u)) ajax.add(u);
+        if (ajax.length >= 15) break;
+      }
+      throw "Sin resultados. DIRECTORIO: $ctx || AJAX: ${ajax.join(' | ')}";
     }
     return MPages(list, true);
   }
