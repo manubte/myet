@@ -39,6 +39,51 @@ class JKAnime extends MProvider {
     return "TITULO: $title | TEXTO: $body | LARGO: ${html.length}";
   }
 
+  String prettify(String slug) {
+    final words = slug.replaceAll("-", " ").replaceAll("_", " ").split(" ");
+    List<String> out = [];
+    for (var w in words) {
+      if (w.isEmpty) continue;
+      out.add(w.substring(0, 1).toUpperCase() + w.substring(1));
+    }
+    return out.join(" ");
+  }
+
+  // Plan B sin selectores CSS: busca las portadas .../animes/image/<slug>.jpg
+  MPages parseByPosters(String html) {
+    List<MManga> list = [];
+    List<String> seen = [];
+    final reg = RegExp(
+        r'(https?://[^"\s\x27()]*?/animes/image/([A-Za-z0-9_.\-]+?)\.(?:jpg|jpeg|png|webp))');
+    for (var m in reg.allMatches(html)) {
+      final slug = m.group(2)!;
+      if (seen.contains(slug)) continue;
+      seen.add(slug);
+      MManga anime = MManga();
+      anime.name = prettify(slug);
+      anime.link = "${source.baseUrl}/$slug/";
+      anime.imageUrl = m.group(1)!;
+      list.add(anime);
+    }
+    if (list.isEmpty) {
+      List<String> classes = [];
+      for (var m in RegExp(r'class="([^"]+)"').allMatches(html)) {
+        final c = m.group(1)!;
+        if (!classes.contains(c)) classes.add(c);
+        if (classes.length >= 60) break;
+      }
+      final i = html.indexOf("<img");
+      String ctx = "";
+      if (i >= 0) {
+        final a = i > 300 ? i - 300 : 0;
+        final b = i + 500 < html.length ? i + 500 : html.length;
+        ctx = html.substring(a, b);
+      }
+      throw "Sin resultados. CLASES: ${classes.join(' | ')} || CONTEXTO IMG: $ctx";
+    }
+    return MPages(list, true);
+  }
+
   MPages parseList(String html) {
     final document = parseHtml(html);
     List<MManga> list = [];
@@ -47,7 +92,7 @@ class JKAnime extends MProvider {
       items = document.select(".card");
     }
     if (items.isEmpty) {
-      throw "Selectores no coinciden. ${describe(html)}";
+      return parseByPosters(html);
     }
     for (var el in items) {
       final a = el.selectFirst("a");
