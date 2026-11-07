@@ -1,4 +1,4 @@
-// JKAnime Dart | v3 | debug: muestra DIRECTORIO + AJAX en el error
+// JKAnime Dart | v4 | debug: SCRIPTS+HITS en getPopular, ajax_search en getLatestUpdates
 import 'package:mangayomi/bridge_lib.dart';
 
 class JKAnime extends MProvider {
@@ -67,20 +67,26 @@ class JKAnime extends MProvider {
       list.add(anime);
     }
     if (list.isEmpty) {
-      final k = html.indexOf("page_directorio");
-      String ctx = "";
-      if (k >= 0) {
-        final e = k + 1500 < html.length ? k + 1500 : html.length;
-        ctx = html.substring(k, e).replaceAll(RegExp(r'\s+'), " ");
-      }
-      List<String> ajax = [];
-      final ajaxReg = RegExp(r'''["\x27]((?:/ajax/|https?://[^"\x27\s]*ajax)[^"\x27\s]*)["\x27]''');
-      for (var m in ajaxReg.allMatches(html)) {
+      List<String> srcs = [];
+      for (var m in RegExp(r'<script[^>]+src="([^"]+)"').allMatches(html)) {
         final u = m.group(1)!;
-        if (!ajax.contains(u)) ajax.add(u);
-        if (ajax.length >= 15) break;
+        if (!srcs.contains(u)) srcs.add(u);
+        if (srcs.length >= 20) break;
       }
-      throw "[v3] Sin resultados. DIRECTORIO: $ctx || AJAX: ${ajax.join(' | ')}";
+      List<String> hits = [];
+      final keys = [
+        "fetch(", ".ajax(", "\$.get(", "\$.post(", "axios", "XMLHttpRequest",
+        "autoimagedir", "mode1", "\"slug\"", "directorio?"
+      ];
+      for (var key in keys) {
+        final i = html.indexOf(key);
+        if (i >= 0) {
+          final a = i > 150 ? i - 150 : 0;
+          final b = i + 350 < html.length ? i + 350 : html.length;
+          hits.add("[$key] " + html.substring(a, b).replaceAll(RegExp(r'\s+'), " "));
+        }
+      }
+      throw "[v4] Sin resultados. SCRIPTS: ${srcs.join(' | ')} || HITS: ${hits.join(' ## ')}";
     }
     return MPages(list, true);
   }
@@ -133,8 +139,16 @@ class JKAnime extends MProvider {
 
   @override
   Future<MPages> getLatestUpdates(int page) async {
-    final html = await getHtml("/directorio/?p=$page&estado=emision");
-    return parseList(html);
+    final res = await client.get(
+        Uri.parse("${source.baseUrl}/ajax_search?q=naruto"),
+        headers: {
+          "User-Agent": headers["User-Agent"]!,
+          "Referer": "${source.baseUrl}/",
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json, text/javascript, */*; q=0.01",
+        });
+    final b = res.body;
+    throw "[v4 AJAX_SEARCH] HTTP ${res.statusCode} LARGO ${b.length}: ${b.substring(0, b.length > 900 ? 900 : b.length)}";
   }
 
   @override
