@@ -1,4 +1,5 @@
-// JKAnime Dart | v4 | debug: SCRIPTS+HITS en getPopular, ajax_search en getLatestUpdates
+// JKAnime Dart | v6 | v5 + prints de progreso en getPopular (ver Console)
+import 'dart:convert';
 import 'package:mangayomi/bridge_lib.dart';
 
 class JKAnime extends MProvider {
@@ -19,6 +20,9 @@ class JKAnime extends MProvider {
       url = "${source.baseUrl}$url";
     }
     final res = await client.get(Uri.parse(url), headers: headers);
+    if (res.statusCode != 200) {
+      throw "HTTP ${res.statusCode} en $url";
+    }
     return res.body;
   }
 
@@ -27,137 +31,129 @@ class JKAnime extends MProvider {
     final t = RegExp(r'<title[^>]*>([^<]*)</title>', caseSensitive: false)
         .firstMatch(html);
     if (t != null) title = t.group(1)!.trim();
-    String body = html;
-    final b = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(html);
-    if (b != null) body = html.substring(b.end);
-    body = body
-        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), " ")
-        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), " ")
-        .replaceAll(RegExp(r'<[^>]+>'), " ")
-        .replaceAll(RegExp(r'\s+'), " ")
-        .trim();
-    if (body.length > 400) body = body.substring(0, 400);
-    return "TITULO: $title | TEXTO: $body | LARGO: ${html.length}";
+    return "TITULO: $title | LARGO: ${html.length}";
   }
 
-  String prettify(String slug) {
-    final words = slug.replaceAll("-", " ").replaceAll("_", " ").split(" ");
-    List<String> out = [];
-    for (var w in words) {
-      if (w.isEmpty) continue;
-      out.add(w.substring(0, 1).toUpperCase() + w.substring(1));
-    }
-    return out.join(" ");
-  }
-
-  // Plan B sin selectores CSS: busca las portadas .../animes/image/<slug>.jpg
-  MPages parseByPosters(String html) {
+  // ---------- LISTAS ----------
+  // JKAnime mete la lista como JSON dentro del HTML: [{"id":..,"title":..,"image":..,"slug":..,"url":..}, ...]
+  List<MManga> parseEmbedded(String html) {
     List<MManga> list = [];
-    List<String> seen = [];
-    final reg = RegExp(
-        r'(https?://[^"\s\x27()]*?/animes/image/([A-Za-z0-9_.\-]+?)\.(?:jpg|jpeg|png|webp))');
-    for (var m in reg.allMatches(html)) {
-      final slug = m.group(2)!;
-      if (seen.contains(slug)) continue;
-      seen.add(slug);
-      MManga anime = MManga();
-      anime.name = prettify(slug);
-      anime.link = "${source.baseUrl}/$slug/";
-      anime.imageUrl = m.group(1)!;
-      list.add(anime);
-    }
-    if (list.isEmpty) {
-      List<String> srcs = [];
-      for (var m in RegExp(r'<script[^>]+src="([^"]+)"').allMatches(html)) {
-        final u = m.group(1)!;
-        if (!srcs.contains(u)) srcs.add(u);
-        if (srcs.length >= 20) break;
-      }
-      List<String> hits = [];
-      final keys = [
-        "fetch(", ".ajax(", "\$.get(", "\$.post(", "axios", "XMLHttpRequest",
-        "autoimagedir", "mode1", "\"slug\"", "directorio?"
-      ];
-      for (var key in keys) {
-        final i = html.indexOf(key);
-        if (i >= 0) {
-          final a = i > 150 ? i - 150 : 0;
-          final b = i + 350 < html.length ? i + 350 : html.length;
-          hits.add("[$key] " + html.substring(a, b).replaceAll(RegExp(r'\s+'), " "));
+    int from = 0;
+    while (list.isEmpty) {
+      final start = html.indexOf('[{"id":', from);
+      if (start < 0) break;
+      from = start + 1;
+
+      int depth = 0;
+      bool inStr = false;
+      bool esc = false;
+      int end = -1;
+      for (int i = start; i < html.length; i++) {
+        final c = html[i];
+        if (inStr) {
+          if (esc) {
+            esc = false;
+          } else if (c == "\\") {
+            esc = true;
+          } else if (c == '"') {
+            inStr = false;
+          }
+        } else {
+          if (c == '"') {
+            inStr = true;
+          } else if (c == "[") {
+            depth++;
+          } else if (c == "]") {
+            depth--;
+            if (depth == 0) {
+              end = i + 1;
+              break;
+            }
+          }
         }
       }
-      throw "[v4] Sin resultados. SCRIPTS: ${srcs.join(' | ')} || HITS: ${hits.join(' ## ')}";
+      if (end < 0) break;
+
+      try {
+        final data = json.decode(html.substring(start, end));
+        for (var item in data) {
+          if (item["slug"] == null || item["title"] == null) continue;
+          MManga anime = MManga();
+          anime.name = item["title"].toString();
+          anime.imageUrl = (item["image"] ?? "").toString();
+          final link = item["url"];
+          anime.link = link != null
+              ? link.toString()
+              : "${source.baseUrl}/${item["slug"]}/";
+          list.add(anime);
+        }
+      } catch (e) {}
     }
-    return MPages(list, true);
+    return list;
   }
 
-  MPages parseList(String html) {
-    final document = parseHtml(html);
-    List<MManga> list = [];
-    var items = document.select(".anime__item");
-    if (items.isEmpty) {
-      items = document.select(".card");
-    }
-    if (items.isEmpty) {
-      return parseByPosters(html);
-    }
-    for (var el in items) {
-      final a = el.selectFirst("a");
-      if (a == null) continue;
-      MManga anime = MManga();
-      final nameEl = el.selectFirst("h5 a, h5, h3, .title");
-      anime.name = (nameEl != null ? nameEl.text : a.text).trim();
-      anime.link = a.getHref;
-      final bg = el.selectFirst("[data-setbg]");
-      final img = el.selectFirst("img");
-      if (bg != null) {
-        anime.imageUrl = bg.attr("data-setbg");
-      } else if (img != null) {
-        final lazy = img.attr("data-src");
-        anime.imageUrl = (lazy != null && lazy.isNotEmpty) ? lazy : img.attr("src");
+  MPages parseList(String html, int page) {
+    List<MManga> list = parseEmbedded(html);
+
+    if (list.isEmpty) {
+      final document = parseHtml(html);
+      var items = document.select(".anime__item");
+      if (items.isEmpty) {
+        items = document.select(".card");
       }
-      if (anime.name.isNotEmpty && anime.link.isNotEmpty) {
-        list.add(anime);
+      for (var el in items) {
+        final a = el.selectFirst("a");
+        if (a == null) continue;
+        MManga anime = MManga();
+        final nameEl = el.selectFirst("h5 a, h5, h3, .title");
+        anime.name = (nameEl != null ? nameEl.text : a.text).trim();
+        anime.link = a.getHref;
+        final bg = el.selectFirst("[data-setbg]");
+        final img = el.selectFirst("img");
+        if (bg != null) {
+          anime.imageUrl = bg.attr("data-setbg");
+        } else if (img != null) {
+          anime.imageUrl = img.attr("src");
+        }
+        if (anime.name.isNotEmpty && anime.link.isNotEmpty) {
+          list.add(anime);
+        }
       }
     }
-    return MPages(list, list.isNotEmpty);
+
+    if (list.isEmpty) {
+      throw "[v5] Sin resultados. ${describe(html)}";
+    }
+    final hasNext = html.contains("p=${page + 1}");
+    return MPages(list, hasNext);
   }
 
   @override
   Future<MPages> getPopular(int page) async {
-    final res = await client.get(
-        Uri.parse("${source.baseUrl}/directorio/?p=$page"),
-        headers: headers);
-    final body = res.body;
-    print("STATUS: ${res.statusCode}");
-    print(describe(body));
-    if (res.statusCode != 200) {
-      throw "HTTP ${res.statusCode}. ${describe(body)}";
-    }
-    return parseList(body);
+    print("[v6] 1/4 inicio getPopular page=$page");
+    final html = await getHtml("/directorio?p=$page");
+    print("[v6] 2/4 html recibido, largo=${html.length}");
+    final embedded = parseEmbedded(html);
+    print("[v6] 3/4 animes en JSON embebido=${embedded.length}");
+    final result = parseList(html, page);
+    print("[v6] 4/4 lista final=${result.list.length} primero=${result.list[0].name}");
+    return result;
   }
 
   @override
   Future<MPages> getLatestUpdates(int page) async {
-    final res = await client.get(
-        Uri.parse("${source.baseUrl}/ajax_search?q=naruto"),
-        headers: {
-          "User-Agent": headers["User-Agent"]!,
-          "Referer": "${source.baseUrl}/",
-          "X-Requested-With": "XMLHttpRequest",
-          "Accept": "application/json, text/javascript, */*; q=0.01",
-        });
-    final b = res.body;
-    throw "[v4 AJAX_SEARCH] HTTP ${res.statusCode} LARGO ${b.length}: ${b.substring(0, b.length > 900 ? 900 : b.length)}";
+    final html = await getHtml("/directorio?p=$page&estado=emision");
+    return parseList(html, page);
   }
 
   @override
   Future<MPages> search(String query, int page, FilterList filterList) async {
-    final q = query.replaceAll(" ", "_");
+    final q = Uri.encodeComponent(query);
     final html = await getHtml("/buscar/$q/$page/");
-    return parseList(html);
+    return parseList(html, page);
   }
 
+  // ---------- DETALLE ----------
   @override
   Future<MManga> getDetail(String url) async {
     final html = await getHtml(url);
@@ -170,7 +166,8 @@ class JKAnime extends MProvider {
     final bg = document.selectFirst("[data-setbg]");
     if (bg != null) anime.imageUrl = bg.attr("data-setbg");
 
-    final desc = document.selectFirst("p.scroll, .sinopsis, .anime__details__text p");
+    final desc =
+        document.selectFirst("p.scroll, .sinopsis, .anime__details__text p");
     if (desc != null) anime.description = desc.text.trim();
 
     List<String> genres = [];
@@ -217,6 +214,7 @@ class JKAnime extends MProvider {
     return anime;
   }
 
+  // ---------- VIDEO ----------
   String b64decode(String input) {
     const chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -242,7 +240,8 @@ class JKAnime extends MProvider {
     List<MVideo> videos = [];
     List<String> found = [];
 
-    for (var m in RegExp(r'"remote"\s*:\s*"([A-Za-z0-9+/=]+)"').allMatches(html)) {
+    for (var m
+        in RegExp(r'"remote"\s*:\s*"([A-Za-z0-9+/=]+)"').allMatches(html)) {
       found.add(b64decode(m.group(1)!));
     }
     for (var m in RegExp(r'<iframe[^>]+src="([^"]+)"').allMatches(html)) {
@@ -257,7 +256,8 @@ class JKAnime extends MProvider {
         });
         final body = res.body;
         final host = embed.split("/").length > 2 ? embed.split("/")[2] : embed;
-        final m3u8 = RegExp(r'https?:[^"\s\\]+\.m3u8[^"\s\\]*').firstMatch(body);
+        final m3u8 =
+            RegExp(r'https?:[^"\s\\]+\.m3u8[^"\s\\]*').firstMatch(body);
         final mp4 = RegExp(r'https?:[^"\s\\]+\.mp4[^"\s\\]*').firstMatch(body);
         if (m3u8 != null) {
           MVideo v = MVideo();
@@ -275,6 +275,9 @@ class JKAnime extends MProvider {
           videos.add(v);
         }
       } catch (e) {}
+    }
+    if (videos.isEmpty) {
+      throw "[v5] Sin videos. Servidores encontrados: ${found.length}. ${found.join(' | ')}";
     }
     return videos;
   }
