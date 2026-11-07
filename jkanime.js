@@ -8,9 +8,10 @@ const mangayomiSources = [{
   "itemType": 1,
   "isNsfw": false,
   "version": "0.0.1",
+  "id": 482915037,
   "dateFormat": "",
   "dateFormatLocale": "",
-  "pkgPath": "anime/src/es/jkanime.js"
+  "pkgPath": "jkanime.js"
 }];
 
 class DefaultExtension extends MProvider {
