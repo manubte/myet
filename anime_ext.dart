@@ -28,6 +28,10 @@ class JKAnime extends MProvider {
     if (items.isEmpty) {
       items = document.select(".card");
     }
+    if (items.isEmpty) {
+      final n = html.length > 300 ? 300 : html.length;
+      throw "Selectores de lista no coinciden. HTML: ${html.substring(0, n)}";
+    }
     for (var el in items) {
       final a = el.selectFirst("a");
       if (a == null) continue;
@@ -52,8 +56,14 @@ class JKAnime extends MProvider {
 
   @override
   Future<MPages> getPopular(int page) async {
-    final html = await getHtml("/directorio/?p=$page");
-    return parseList(html);
+    final res = await client.get(
+        Uri.parse("${source.baseUrl}/directorio/?p=$page"),
+        headers: headers);
+    final body = res.body;
+    print("STATUS: ${res.statusCode}");
+    print("LARGO: ${body.length}");
+    print(body.substring(0, body.length > 600 ? 600 : body.length));
+    return parseList(body);
   }
 
   @override
