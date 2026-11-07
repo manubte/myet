@@ -1,3 +1,4 @@
+// JKAnime Dart | v3 | debug: muestra DIRECTORIO + AJAX en el error
 import 'package:mangayomi/bridge_lib.dart';
 
 class JKAnime extends MProvider {
@@ -79,7 +80,7 @@ class JKAnime extends MProvider {
         if (!ajax.contains(u)) ajax.add(u);
         if (ajax.length >= 15) break;
       }
-      throw "Sin resultados. DIRECTORIO: $ctx || AJAX: ${ajax.join(' | ')}";
+      throw "[v3] Sin resultados. DIRECTORIO: $ctx || AJAX: ${ajax.join(' | ')}";
     }
     return MPages(list, true);
   }
