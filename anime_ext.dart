@@ -21,6 +21,24 @@ class JKAnime extends MProvider {
     return res.body;
   }
 
+  String describe(String html) {
+    String title = "";
+    final t = RegExp(r'<title[^>]*>([^<]*)</title>', caseSensitive: false)
+        .firstMatch(html);
+    if (t != null) title = t.group(1)!.trim();
+    String body = html;
+    final b = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(html);
+    if (b != null) body = html.substring(b.end);
+    body = body
+        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), " ")
+        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), " ")
+        .replaceAll(RegExp(r'<[^>]+>'), " ")
+        .replaceAll(RegExp(r'\s+'), " ")
+        .trim();
+    if (body.length > 400) body = body.substring(0, 400);
+    return "TITULO: $title | TEXTO: $body | LARGO: ${html.length}";
+  }
+
   MPages parseList(String html) {
     final document = parseHtml(html);
     List<MManga> list = [];
@@ -29,8 +47,7 @@ class JKAnime extends MProvider {
       items = document.select(".card");
     }
     if (items.isEmpty) {
-      final n = html.length > 300 ? 300 : html.length;
-      throw "Selectores de lista no coinciden. HTML: ${html.substring(0, n)}";
+      throw "Selectores no coinciden. ${describe(html)}";
     }
     for (var el in items) {
       final a = el.selectFirst("a");
@@ -61,8 +78,10 @@ class JKAnime extends MProvider {
         headers: headers);
     final body = res.body;
     print("STATUS: ${res.statusCode}");
-    print("LARGO: ${body.length}");
-    print(body.substring(0, body.length > 600 ? 600 : body.length));
+    print(describe(body));
+    if (res.statusCode != 200) {
+      throw "HTTP ${res.statusCode}. ${describe(body)}";
+    }
     return parseList(body);
   }
 
