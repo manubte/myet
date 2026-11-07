@@ -1,0 +1,19 @@
+[
+  {
+    "id": 482915037,
+    "name": "JKAnime",
+    "lang": "es",
+    "baseUrl": "https://jkanime.net",
+    "apiUrl": "",
+    "iconUrl": "https://jkanime.net/favicon.ico",
+    "typeSource": "single",
+    "itemType": 1,
+    "isNsfw": false,
+    "version": "0.0.1",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "pkgPath": "jkanime.js",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/manubte/myet/main/jkanime.js",
+    "hasCloudflare": false
+  }
+]
